@@ -62,6 +62,8 @@ input.code.unsure{border-color:var(--warn);background:var(--warn-bg)}
 .empty{color:var(--muted);font-size:.85rem;margin-top:8px;text-align:center;padding:18px 0;border:1px dashed var(--line);border-radius:8px}
 .rowtools{display:flex;justify-content:flex-end;margin-top:6px}
 .link{background:none;border:0;color:var(--muted);padding:4px;font-weight:500;font-size:.85rem}
+.prefix{margin-top:12px}
+.prefix label{display:block;font-size:.8rem;color:var(--muted);font-weight:600;margin-bottom:4px}
 label.chk{display:flex;gap:8px;align-items:flex-start;font-size:.9rem;margin-top:10px;color:var(--muted)}
 
 #overlay{position:fixed;inset:0;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:10;
@@ -103,7 +105,11 @@ label.chk{display:flex;gap:8px;align-items:flex-start;font-size:.9rem;margin-top
     <div class="actions" style="margin-top:12px">
       <button class="primary" id="run">🔍 Werte erkennen</button>
     </div>
-    <label class="chk"><input type="checkbox" id="brFormat" checked> <span>B&amp;R-Seriennummer: 4 Hex-Zeichen + 7 Ziffern (z. B. B0BF0868946). Verbessert die Erkennung, abschalten wenn andere Werte vorkommen.</span></label>
+    <div class="prefix">
+      <label for="prefixes">Feste Anfänge (kommagetrennt)</label>
+      <input id="prefixes" class="txt code" autocapitalize="characters" spellcheck="false" autocomplete="off">
+      <p class="hint" style="margin-top:4px">Diese Anfänge sind immer gleich, gelesen werden nur die Ziffern danach (Gesamtlänge 11). Feld leeren, wenn andere Werte vorkommen.</p>
+    </div>
     <progress id="prog" max="1" value="0" hidden></progress>
     <div id="status"></div>
   </section>
@@ -3169,6 +3175,42 @@ var qrcode = function() {
       const best=Object.keys(c).sort((a,b)=>c[b]-c[a])[0]; text+=best; agree=Math.min(agree, c[best]/same.length); }
     return {text, agree: agree * same.length/rs.length, n: rs.length, pattern: PAT.test(text)};
   }
+
+  function lev(a,b){ const d=[]; for(let j=0;j<=b.length;j++) d[j]=j;
+    for(let i=1;i<=a.length;i++){ let p=d[0]; d[0]=i; for(let j=1;j<=b.length;j++){ const t=d[j]; d[j]=Math.min(d[j]+1,d[j-1]+1,p+(a[i-1]===b[j-1]?0:1)); p=t; } }
+    return d[b.length]; }
+  // Known fixed beginnings (e.g. A37D02, 894309, B0BF08): only the remaining digits are read.
+  // Each reading is matched to the closest prefix (allowing a stray character at the start);
+  // readings that do not fit are dropped, then prefix and digits are voted on.
+  function voteWithPrefixes(readings, prefixes, total){
+    total = total || 11;
+    const cand = [];
+    readings.forEach(raw => {
+      const r = raw.toUpperCase().replace(/[^0-9A-Z]/g,"");
+      let best = null;
+      prefixes.forEach(P => {
+        const tl = total - P.length;
+        for(let k=0;k<=2;k++){
+          if(r.length < k + P.length + tl) continue;
+          const d = lev(r.slice(k, k+P.length), P) + k*0.6 + Math.abs(r.length-k-total)*0.4;
+          if(!best || d < best.d) best = {d, P, tail: r.slice(k+P.length, k+P.length+tl)};
+        }
+      });
+      if(!best || best.d > 2.6) return;
+      const tail = best.tail.replace(/[A-Z]/g, c => DIGIT[c] || "?");
+      if(tail.includes("?")) return;
+      cand.push({P: best.P, tail});
+    });
+    if(!cand.length) return {text:"", agree:0, n:0};
+    const pc = {}; cand.forEach(c => pc[c.P] = (pc[c.P]||0)+1);
+    const P = Object.keys(pc).sort((a,b)=>pc[b]-pc[a])[0];
+    const same = cand.filter(c => c.P === P);
+    let tail = "", agree = 1;
+    for(let i=0;i<total-P.length;i++){ const c={}; same.forEach(x => c[x.tail[i]]=(c[x.tail[i]]||0)+1);
+      const b=Object.keys(c).sort((x,y)=>c[y]-c[x])[0]; tail+=b; agree=Math.min(agree, c[b]/same.length); }
+    return {text: P + tail, agree: agree * Math.min(1, same.length/3), n: same.length, prefix: P, pattern: true};
+  }
+  root.CellFinder.voteWithPrefixes = voteWithPrefixes;
   root.CellFinder.vote = vote;
   root.CellFinder.VARIANTS = [{height:48,blur:1},{height:64,blur:2},{height:96,blur:3},{height:96,blur:4},{height:128,blur:5},{height:64,blur:2,bin:128},{height:80,blur:2}];
 })(typeof window!=="undefined"?window:globalThis);
@@ -3177,7 +3219,11 @@ var qrcode = function() {
 <script>
 (() => {
   const $ = id => document.getElementById(id);
-  const STORE = "cardqr.rows.v2", RECT = "cardqr.rect.v1";
+  const STORE = "cardqr.rows.v2", RECT = "cardqr.rect.v1", PREFIX = "cardqr.prefixes.v1";
+  const DEFAULT_PREFIXES = "A37D02, 894309, B0BF08";
+  const prefixList = () => $("prefixes").value.toUpperCase().split(/[\s,;]+/).map(x => x.replace(/[^0-9A-Z]/g,"")).filter(x => x.length > 0 && x.length < 11);
+  try{ $("prefixes").value = localStorage.getItem(PREFIX) ?? DEFAULT_PREFIXES; }catch(e){ $("prefixes").value = DEFAULT_PREFIXES; }
+  $("prefixes").addEventListener("change", () => { try{ localStorage.setItem(PREFIX, $("prefixes").value); }catch(e){} });
   const DEFAULT_NAMES = [["2","Power"],["3","Y1"],["4","Y2"],["5","X1 / R1"],["6","Z1 / Z2"],["7","X2 / R2"]];
   let rows = [];
   let photo = null;            // HTMLImageElement
@@ -3328,8 +3374,8 @@ var qrcode = function() {
 
   // ---------- OCR ----------
   let worker = null, workerFormat = null;
-  async function getWorker(br){
-    if(worker && workerFormat === br) return worker;
+  async function getWorker(whitelist){
+    if(worker && workerFormat === whitelist) return worker;
     if(!worker){
       if(window.CARDQR_EMBED){
         // single-file build (test.html): engine and language data are embedded in the page
@@ -3349,10 +3395,10 @@ var qrcode = function() {
     }
     await worker.setParameters({
       tessedit_pageseg_mode: "7",
-      tessedit_char_whitelist: br ? "0123456789ABCDEF" : "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+      tessedit_char_whitelist: whitelist,
       user_defined_dpi: "300",
     });
-    workerFormat = br;
+    workerFormat = whitelist;
     return worker;
   }
 
@@ -3365,11 +3411,13 @@ var qrcode = function() {
 
   async function runOcr(){
     if(!photo) return;
-    const br = $("brFormat").checked;
+    const prefixes = prefixList();
+    // serial numbers are hex; letters used in the fixed beginnings are allowed as well
+    const whitelist = [...new Set(("0123456789ABCDEF" + prefixes.join("")).split(""))].join("");
     $("run").disabled = true; $("prog").hidden = false; $("prog").value = 0;
     try{
       status("Texterkennung wird gestartet …");
-      const w = await getWorker(br);
+      const w = await getWorker(whitelist);
       // crop at good resolution
       const sx = rect.x*photo.naturalWidth, sy = rect.y*photo.naturalHeight, sw = rect.w*photo.naturalWidth, sh = rect.h*photo.naturalHeight;
       const s = Math.min(1, 1600/sw);
@@ -3401,9 +3449,9 @@ var qrcode = function() {
             done++; $("prog").value = done/jobs;
             status("Lese Zeile " + (ri+1) + " von " + res.rows.length + " …");
           }
-          const v = CellFinder.vote(reads, {digitsTail: br});
+          const v = prefixes.length ? CellFinder.voteWithPrefixes(reads, prefixes, 11) : CellFinder.vote(reads, {digitsTail: true});
           o["card"+ci] = v.text;
-          o.unsure[ci] = !v.text || v.agree < 0.7 || (br && !v.pattern);
+          o.unsure[ci] = !v.text || v.agree < 0.85 || !v.pattern;
         }
         out.push(o);
       }

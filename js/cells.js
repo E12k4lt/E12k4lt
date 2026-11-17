@@ -138,6 +138,42 @@
       const best=Object.keys(c).sort((a,b)=>c[b]-c[a])[0]; text+=best; agree=Math.min(agree, c[best]/same.length); }
     return {text, agree: agree * same.length/rs.length, n: rs.length, pattern: PAT.test(text)};
   }
+
+  function lev(a,b){ const d=[]; for(let j=0;j<=b.length;j++) d[j]=j;
+    for(let i=1;i<=a.length;i++){ let p=d[0]; d[0]=i; for(let j=1;j<=b.length;j++){ const t=d[j]; d[j]=Math.min(d[j]+1,d[j-1]+1,p+(a[i-1]===b[j-1]?0:1)); p=t; } }
+    return d[b.length]; }
+  // Known fixed beginnings (e.g. A37D02, 894309, B0BF08): only the remaining digits are read.
+  // Each reading is matched to the closest prefix (allowing a stray character at the start);
+  // readings that do not fit are dropped, then prefix and digits are voted on.
+  function voteWithPrefixes(readings, prefixes, total){
+    total = total || 11;
+    const cand = [];
+    readings.forEach(raw => {
+      const r = raw.toUpperCase().replace(/[^0-9A-Z]/g,"");
+      let best = null;
+      prefixes.forEach(P => {
+        const tl = total - P.length;
+        for(let k=0;k<=2;k++){
+          if(r.length < k + P.length + tl) continue;
+          const d = lev(r.slice(k, k+P.length), P) + k*0.6 + Math.abs(r.length-k-total)*0.4;
+          if(!best || d < best.d) best = {d, P, tail: r.slice(k+P.length, k+P.length+tl)};
+        }
+      });
+      if(!best || best.d > 2.6) return;
+      const tail = best.tail.replace(/[A-Z]/g, c => DIGIT[c] || "?");
+      if(tail.includes("?")) return;
+      cand.push({P: best.P, tail});
+    });
+    if(!cand.length) return {text:"", agree:0, n:0};
+    const pc = {}; cand.forEach(c => pc[c.P] = (pc[c.P]||0)+1);
+    const P = Object.keys(pc).sort((a,b)=>pc[b]-pc[a])[0];
+    const same = cand.filter(c => c.P === P);
+    let tail = "", agree = 1;
+    for(let i=0;i<total-P.length;i++){ const c={}; same.forEach(x => c[x.tail[i]]=(c[x.tail[i]]||0)+1);
+      const b=Object.keys(c).sort((x,y)=>c[y]-c[x])[0]; tail+=b; agree=Math.min(agree, c[b]/same.length); }
+    return {text: P + tail, agree: agree * Math.min(1, same.length/3), n: same.length, prefix: P, pattern: true};
+  }
+  root.CellFinder.voteWithPrefixes = voteWithPrefixes;
   root.CellFinder.vote = vote;
   root.CellFinder.VARIANTS = [{height:48,blur:1},{height:64,blur:2},{height:96,blur:3},{height:96,blur:4},{height:128,blur:5},{height:64,blur:2,bin:128},{height:80,blur:2}];
 })(typeof window!=="undefined"?window:globalThis);

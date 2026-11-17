@@ -11,6 +11,11 @@ eingebettet, ca. 14 MB). Aufs Handy kopieren und im Browser öffnen (Chrome: `fi
 Mit „🧪 Beispielfoto“ lässt sich die Erkennung sofort ausprobieren.
 Neu erzeugen nach Änderungen: `node tools/build-test.js`.
 
+## Feste Anfänge
+Die Werte beginnen immer mit einem bekannten Anfang (Standard: `A37D02`, `894309`, `B0BF08`);
+nur die 5 Ziffern danach werden tatsächlich gelesen. Die Anfänge sind in der App unter dem Rahmen
+einstellbar (wird auf dem Gerät gespeichert). Leeres Feld = freie Erkennung.
+
 ## Keine Online-Daten
 Die App lädt nichts aus dem Internet. Die in tesseract.js eingebauten CDN-Standardadressen
 (jsdelivr) wurden in `vendor/tesseract.min.js` und `vendor/worker.min.js` durch lokale Pfade ersetzt.
