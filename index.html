@@ -92,6 +92,7 @@ label.chk{display:flex;gap:8px;align-items:flex-start;font-size:.9rem;margin-top
       <input id="cam" type="file" accept="image/*" capture="environment">
       <label class="btn" for="gal">🖼️ Aus Galerie</label>
       <input id="gal" type="file" accept="image/*">
+      <button id="sample" hidden>🧪 Beispielfoto</button>
     </div>
     <p class="hint">Tipp: möglichst gerade und formatfüllend fotografieren, ohne Spiegelung.</p>
   </section>
@@ -278,19 +279,37 @@ label.chk{display:flex;gap:8px;align-items:flex-start;font-size:.9rem;margin-top
     }catch(e){ status(e.message, "err"); }
   }
   $("cam").onchange = onFile; $("gal").onchange = onFile;
+  // test build only: embedded example photo with a matching frame
+  if(window.CARDQR_EMBED && window.CARDQR_EMBED.sample){
+    $("sample").hidden = false;
+    $("sample").onclick = async () => {
+      photo = await loadPhoto(await (await fetch(window.CARDQR_EMBED.sample)).blob());
+      rect = {x:.32, y:.485, w:.507, h:.2};
+      $("cropCard").hidden = false; drawView(); status("Beispielfoto geladen. Jetzt „Werte erkennen“ tippen.");
+      $("cropCard").scrollIntoView({behavior:"smooth", block:"start"});
+    };
+  }
 
   // ---------- OCR ----------
   let worker = null, workerFormat = null;
   async function getWorker(br){
     if(worker && workerFormat === br) return worker;
     if(!worker){
-      const base = new URL(".", location.href).href;
-      worker = await Tesseract.createWorker("eng", 1, {
-        workerPath: base + "vendor/worker.min.js",
-        corePath: base + "vendor/core",
-        langPath: base + "lang",
-        gzip: true, workerBlobURL: false,
-      });
+      if(window.CARDQR_EMBED){
+        // single-file build (test.html): engine and language data are embedded in the page
+        const E = window.CARDQR_EMBED;
+        worker = await Tesseract.createWorker("eng", 1, {
+          workerPath: E.worker(), corePath: await E.core(), langPath: E.langPath, gzip: true, workerBlobURL: false, cacheMethod: "none",
+        });
+      } else {
+        const base = new URL(".", location.href).href;
+        worker = await Tesseract.createWorker("eng", 1, {
+          workerPath: base + "vendor/worker.min.js",
+          corePath: base + "vendor/core",
+          langPath: base + "lang",
+          gzip: true, workerBlobURL: false,
+        });
+      }
     }
     await worker.setParameters({
       tessedit_pageseg_mode: "7",
@@ -375,7 +394,9 @@ label.chk{display:flex;gap:8px;align-items:flex-start;font-size:.9rem;margin-top
   $("clearYes").onclick = () => { rows = []; save(); render(); $("clear").hidden = false; $("clearYes").hidden = true; };
 
   // ---------- offline (service worker) ----------
-  if("serviceWorker" in navigator && /^https?:$/.test(location.protocol)){
+  if(window.CARDQR_EMBED){
+    $("offline").textContent = "Offline (Einzeldatei)"; $("offline").classList.add("ok");
+  } else if("serviceWorker" in navigator && /^https?:$/.test(location.protocol)){
     navigator.serviceWorker.register("sw.js").then(() => navigator.serviceWorker.ready).then(() => {
       $("offline").textContent = "Offline bereit"; $("offline").classList.add("ok");
     }).catch(() => { $("offline").textContent = "Offline nicht verfügbar"; });
