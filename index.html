@@ -1,0 +1,392 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Card QR Scanner</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+:root{
+  --bg:#f4f5f7; --surface:#ffffff; --text:#16181d; --muted:#5d6470; --line:#dde0e5;
+  --accent:#1f5fd6; --accent-text:#ffffff; --warn:#b25e00; --ok:#1d7a3e; --chip:#e8eefb;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#121417; --surface:#1c1f24; --text:#eceef1; --muted:#9aa1ac; --line:#2e333a;
+    --accent:#5b8ff0; --accent-text:#0b1220; --warn:#f0a24a; --ok:#5cc983; --chip:#24304a;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#121417; --surface:#1c1f24; --text:#eceef1; --muted:#9aa1ac; --line:#2e333a;
+  --accent:#5b8ff0; --accent-text:#0b1220; --warn:#f0a24a; --ok:#5cc983; --chip:#24304a;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;background:var(--bg);color:var(--text);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+main{max-width:760px;margin:0 auto;padding-block:16px 48px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+h1{font-size:1.35rem;margin:4px 0 4px}
+p.sub{margin:0 0 16px;color:var(--muted);font-size:.92rem}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:14px}
+.actions{display:flex;gap:10px;flex-wrap:wrap}
+button,.btn{appearance:none;border:1px solid var(--line);background:var(--surface);color:var(--text);
+  border-radius:10px;padding:12px 16px;font:inherit;font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:8px}
+.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-text)}
+button:disabled{opacity:.5;cursor:default}
+input[type=file]{display:none}
+#preview{margin-top:12px;max-width:100%;max-height:260px;border-radius:8px;border:1px solid var(--line)}
+#status{margin-top:10px;font-size:.92rem;color:var(--muted);min-height:1.2em;white-space:pre-wrap}
+#status.err{color:var(--warn)}
+#status.ok{color:var(--ok)}
+.engine{font-size:.82rem;color:var(--muted);margin-top:8px}
+.row{border-top:1px solid var(--line);padding:14px 0}
+.row:first-child{border-top:0;padding-top:0}
+.rowhead{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+.nr{background:var(--accent);color:var(--accent-text);border-radius:6px;padding:2px 8px;font-weight:700;min-width:2em;text-align:center}
+.rowhead input{flex:1;min-width:0}
+input.txt{font:inherit;color:var(--text);background:var(--bg);border:1px solid var(--line);border-radius:8px;padding:8px 10px;width:100%}
+input.code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.03em}
+.cols{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.col label{display:block;font-size:.8rem;color:var(--muted);margin-bottom:4px;font-weight:600}
+.qr{margin-top:8px;background:#fff;border-radius:8px;padding:6px;display:flex;justify-content:center;cursor:zoom-in;border:1px solid var(--line)}
+.qr img{width:100%;max-width:200px;height:auto;image-rendering:pixelated;display:block}
+.empty{color:var(--muted);font-size:.85rem;margin-top:8px;text-align:center;padding:20px 0;border:1px dashed var(--line);border-radius:8px}
+.rowtools{display:flex;justify-content:flex-end;margin-top:8px}
+.link{background:none;border:0;color:var(--muted);padding:4px;font-weight:500;font-size:.85rem}
+#overlay{position:fixed;inset:0;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:10;padding:max(16px,env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) max(16px,env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+#overlay img{width:min(90vw,90vh - 120px);height:auto;image-rendering:pixelated}
+#overlay .big{color:#000;font:700 1.4rem ui-monospace,Menlo,Consolas,monospace;margin-top:14px;letter-spacing:.05em;text-align:center}
+#overlay .lbl{color:#444;margin-top:4px}
+#overlay .nav{display:flex;gap:10px;margin-top:18px}
+#overlay .nav button{background:#f0f0f0;color:#000;border-color:#ccc}
+@media (max-width:420px){.cols{grid-template-columns:1fr 1fr;gap:8px}button,.btn{padding:11px 12px}}
+</style>
+</head>
+<body>
+<main>
+  <h1>Card QR Scanner</h1>
+  <p class="sub">Foto der Tabelle „HW-Config“ aufnehmen – die Spalten <b>Card 0</b> und <b>Card 1</b> werden erkannt und als QR-Codes ausgegeben.</p>
+
+  <section class="card">
+    <div class="actions">
+      <label class="btn primary" for="cam">📷 Foto aufnehmen</label>
+      <input id="cam" type="file" accept="image/*" capture="environment">
+      <label class="btn" for="gal">🖼️ Aus Galerie</label>
+      <input id="gal" type="file" accept="image/*">
+      <button id="again" disabled>↻ Erneut erkennen</button>
+    </div>
+    <img id="preview" alt="Aufgenommenes Foto" hidden>
+    <div id="status"></div>
+    <div class="engine" id="engine"></div>
+  </section>
+
+  <section class="card" id="results">
+    <div class="empty" id="noRows">Noch keine Daten. Foto aufnehmen oder Zeile manuell hinzufügen.</div>
+    <div id="rows"></div>
+    <div class="actions" style="margin-top:12px">
+      <button id="add">＋ Zeile hinzufügen</button>
+      <button id="clear">Alles löschen</button>
+      <button id="clearYes" hidden>Wirklich löschen?</button>
+    </div>
+  </section>
+</main>
+
+<div id="overlay" role="dialog" aria-modal="true" hidden>
+  <img id="ovImg" alt="QR-Code groß">
+  <div class="big" id="ovCode"></div>
+  <div class="lbl" id="ovLbl"></div>
+  <div class="nav">
+    <button id="ovPrev">◀</button>
+    <button id="ovClose">Schließen</button>
+    <button id="ovNext">▶</button>
+  </div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const STORE = "cardqr.rows.v1";
+  let rows = [];
+  let lastImage = null;   // {blob, dataUrl}
+  let sample = null;
+  let samplePossible = false;
+
+  // ---------- storage ----------
+  function save(){ try{ localStorage.setItem(STORE, JSON.stringify(rows)); }catch(e){} }
+  function load(){ try{ const r = JSON.parse(localStorage.getItem(STORE)||"[]"); if(Array.isArray(r)) rows = r; }catch(e){} }
+
+  // ---------- status ----------
+  function status(msg, cls){ const s=$("status"); s.textContent = msg||""; s.className = cls||""; }
+
+  // ---------- QR ----------
+  function qrDataUrl(text, cell){
+    const q = qrcode(0, "M");
+    q.addData(text);
+    q.make();
+    return q.createDataURL(cell||8, 4);
+  }
+
+  function clean(v){
+    return String(v||"").toUpperCase().replace(/[^A-Z0-9]/g,"");
+  }
+
+  // ---------- render ----------
+  function render(){
+    const box = $("rows");
+    box.textContent = "";
+    $("noRows").hidden = rows.length > 0;
+    rows.forEach((r, i) => {
+      const row = document.createElement("div");
+      row.className = "row";
+
+      const head = document.createElement("div");
+      head.className = "rowhead";
+      const nr = document.createElement("span");
+      nr.className = "nr"; nr.textContent = r.nr || "–";
+      const name = document.createElement("input");
+      name.className = "txt"; name.value = r.name || ""; name.placeholder = "Bezeichnung (z. B. X1 / R1)";
+      name.oninput = () => { r.name = name.value; save(); };
+      head.append(nr, name);
+      row.append(head);
+
+      const cols = document.createElement("div");
+      cols.className = "cols";
+      ["card0","card1"].forEach((key, ci) => {
+        const col = document.createElement("div");
+        col.className = "col";
+        const lab = document.createElement("label");
+        lab.textContent = "Card " + ci;
+        const inp = document.createElement("input");
+        inp.className = "txt code"; inp.value = r[key] || ""; inp.placeholder = "leer";
+        inp.autocapitalize = "characters"; inp.spellcheck = false; inp.autocomplete = "off";
+        const qrBox = document.createElement("div");
+        const draw = () => {
+          qrBox.textContent = "";
+          const v = clean(r[key]);
+          if(!v){ qrBox.className = "empty"; qrBox.textContent = "kein Wert"; return; }
+          qrBox.className = "qr";
+          const img = document.createElement("img");
+          img.src = qrDataUrl(v, 6); img.alt = "QR " + v;
+          qrBox.append(img);
+          qrBox.onclick = () => openOverlay(i, ci);
+        };
+        inp.oninput = () => { r[key] = clean(inp.value); save(); draw(); };
+        inp.onblur = () => { inp.value = r[key] || ""; };
+        draw();
+        col.append(lab, inp, qrBox);
+        cols.append(col);
+      });
+      row.append(cols);
+
+      const tools = document.createElement("div");
+      tools.className = "rowtools";
+      const del = document.createElement("button");
+      del.className = "link"; del.textContent = "Zeile entfernen";
+      del.onclick = () => { rows.splice(i,1); save(); render(); };
+      tools.append(del);
+      row.append(tools);
+
+      box.append(row);
+    });
+  }
+
+  // ---------- fullscreen QR ----------
+  let ovList = [], ovIdx = 0;
+  function buildOvList(){
+    ovList = [];
+    rows.forEach((r,i) => ["card0","card1"].forEach((k,ci) => { if(clean(r[k])) ovList.push({i,ci,v:clean(r[k]),lbl:(r.nr?r.nr+" · ":"")+(r.name||"")+" · Card "+ci}); }));
+  }
+  function showOv(){
+    const it = ovList[ovIdx]; if(!it) return;
+    $("ovImg").src = qrDataUrl(it.v, 12);
+    $("ovCode").textContent = it.v;
+    $("ovLbl").textContent = it.lbl + "  (" + (ovIdx+1) + "/" + ovList.length + ")";
+  }
+  function openOverlay(i, ci){
+    buildOvList();
+    ovIdx = Math.max(0, ovList.findIndex(x => x.i===i && x.ci===ci));
+    $("overlay").hidden = false; showOv();
+  }
+  $("ovClose").onclick = () => { $("overlay").hidden = true; };
+  $("ovPrev").onclick = () => { ovIdx = (ovIdx - 1 + ovList.length) % ovList.length; showOv(); };
+  $("ovNext").onclick = () => { ovIdx = (ovIdx + 1) % ovList.length; showOv(); };
+
+  // ---------- image prep ----------
+  function prepImage(file, maxSide){
+    return new Promise((res, rej) => {
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        const s = Math.min(1, maxSide / Math.max(img.width, img.height));
+        const c = document.createElement("canvas");
+        c.width = Math.round(img.width*s); c.height = Math.round(img.height*s);
+        c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+        URL.revokeObjectURL(url);
+        c.toBlob(b => b ? res({blob:b, dataUrl:c.toDataURL("image/jpeg",0.9)}) : rej(new Error("Bild konnte nicht verarbeitet werden")), "image/jpeg", 0.9);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); rej(new Error("Bild konnte nicht geladen werden")); };
+      img.src = url;
+    });
+  }
+
+  // ---------- recognition: Claude vision ----------
+  const PROMPT = `Das Foto zeigt einen Bildschirm einer Maschinensteuerung mit einer Tabelle "HW - Config" / "Acopos".
+Die Tabelle hat die Spalten: Nummer (blaues Kästchen), Achsname (z. B. Power, Y1, Y2, X1 / R1, Z1 / Z2, X2 / R2), "Card 0", "Card 1", "Drive" (Drive ignorieren).
+Lies für JEDE Zeile, die in Card 0 oder Card 1 einen Seriennummern-Wert hat, die Werte exakt ab.
+Hinweise: Werte sind meist 11 Zeichen lang, bestehen aus Großbuchstaben und Ziffern (z. B. A37D0220022, 89430945038, B0BF0868946). Unterscheide sorgfältig 0/O (in diesen Seriennummern fast immer die Ziffer 0), 8/B, 1/I, 5/S, 6/G. Ist eine Zelle leer, gib "" zurück. Zeilen ohne Card-Werte (z. B. BA1-Q1/Q2) weglassen. Nichts erfinden.
+Antworte NUR mit JSON in dieser Form:
+{"rows":[{"nr":"2","name":"Power","card0":"A37D0220022","card1":"A37D0220055"}]}`;
+
+  async function recognizeClaude(blob){
+    const data = await sample.json(PROMPT, { images:[blob], modelTier:"default" });
+    const list = Array.isArray(data) ? data : (data && data.rows) || [];
+    return list.map(r => ({ nr:String(r.nr||"").trim(), name:String(r.name||"").trim(), card0:clean(r.card0), card1:clean(r.card1) }))
+               .filter(r => r.card0 || r.card1);
+  }
+
+  // ---------- recognition: offline OCR (Tesseract) ----------
+  let tessLoading = null;
+  function loadTesseract(){
+    if(window.Tesseract) return Promise.resolve();
+    if(tessLoading) return tessLoading;
+    tessLoading = new Promise((res, rej) => {
+      const s = document.createElement("script");
+      s.src = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";
+      s.onload = res; s.onerror = () => { tessLoading = null; rej(new Error("OCR-Bibliothek konnte nicht geladen werden (Internet nötig)")); };
+      document.head.append(s);
+    });
+    return tessLoading;
+  }
+
+  // Fix typical OCR confusions inside a serial-like token
+  function fixToken(t){
+    t = t.toUpperCase().replace(/[^A-Z0-9]/g,"");
+    return t.replace(/O/g,"0").replace(/[IL|]/g,"1").replace(/S(?=\d)/g,"5");
+  }
+
+  async function recognizeTesseract(blob){
+    await loadTesseract();
+    const { data } = await Tesseract.recognize(blob, "eng", {
+      logger: m => { if(m.status === "recognizing text") status("Offline-Texterkennung … " + Math.round(m.progress*100) + " %"); }
+    });
+    const words = (data.words||[]).map(w => ({ t:w.text, x:(w.bbox.x0+w.bbox.x1)/2, y:(w.bbox.y0+w.bbox.y1)/2, h:w.bbox.y1-w.bbox.y0, x0:w.bbox.x0, x1:w.bbox.x1 }));
+    // header columns: "Card" followed by 0/1, and "Drive"
+    let c0=null, c1=null, drv=null;
+    words.forEach((w, k) => {
+      const t = w.t.toLowerCase();
+      if(t.startsWith("card")){
+        const nx = words[k+1]; const tail = (t.replace("card","") || (nx ? nx.t : "")).replace(/[^01o]/gi,"").toLowerCase();
+        const xc = nx && !t.replace("card","") ? (w.x0 + nx.x1)/2 : w.x;
+        if(tail.startsWith("0") || tail.startsWith("o")) c0 = c0 ?? xc; else if(tail.startsWith("1")) c1 = c1 ?? xc;
+      }
+      if(t.startsWith("driv")) drv = drv ?? w.x;
+    });
+    const serials = words.filter(w => { const f = fixToken(w.t); return f.length >= 9 && f.length <= 13 && /\d{4}/.test(f); })
+                         .map(w => ({...w, v:fixToken(w.t)}));
+    if(!serials.length) return [];
+    if(c0 == null || c1 == null){
+      // fallback: estimate columns from x positions of serials (cluster leftmost two)
+      const xs = serials.map(s => s.x).sort((a,b)=>a-b);
+      c0 = c0 ?? xs[0];
+      c1 = c1 ?? (xs.find(x => x - c0 > (xs[xs.length-1]-xs[0])/4) ?? c0 + 1e6);
+    }
+    if(drv == null) drv = c1 + (c1 - c0);
+    // group into lines by y
+    serials.sort((a,b) => a.y - b.y);
+    const lines = [];
+    serials.forEach(s => {
+      const L = lines.find(l => Math.abs(l.y - s.y) < s.h*0.7);
+      if(L) L.items.push(s); else lines.push({y:s.y, items:[s]});
+    });
+    // row labels: words left of card0 column on same line
+    const labelFor = y => words.filter(w => w.x < c0 - 20 && Math.abs(w.y - y) < 25).sort((a,b)=>a.x-b.x).map(w=>w.t).join(" ");
+    const out = [];
+    lines.forEach(l => {
+      const r = { nr:"", name:"", card0:"", card1:"" };
+      l.items.forEach(s => {
+        const d = [Math.abs(s.x-c0), Math.abs(s.x-c1), Math.abs(s.x-drv)];
+        const k = d.indexOf(Math.min(...d));
+        if(k===0 && !r.card0) r.card0 = s.v;
+        else if(k===1 && !r.card1) r.card1 = s.v;
+      });
+      if(!r.card0 && !r.card1) return;
+      const lbl = labelFor(l.y).trim();
+      const m = lbl.match(/^(\d{1,3})\s*(.*)$/);
+      if(m){ r.nr = m[1]; r.name = m[2]; } else r.name = lbl;
+      out.push(r);
+    });
+    return out;
+  }
+
+  // ---------- flow ----------
+  async function runRecognition(){
+    if(!lastImage) return;
+    $("again").disabled = true;
+    let result = null, used = "";
+    try{
+      if(sample){
+        status("Claude liest die Tabelle … (kann 10–40 s dauern)");
+        try{
+          result = await recognizeClaude(lastImage.blob);
+          used = "Claude (Bilderkennung)";
+        }catch(e){
+          if(e && e.code === "not_granted"){ sample = null; }
+          status("Claude nicht verfügbar (" + (e && (e.code||e.message)) + ") – nutze Offline-Erkennung …", "err");
+        }
+      }
+      if(!result){
+        status("Offline-Texterkennung wird geladen …");
+        result = await recognizeTesseract(lastImage.blob);
+        used = "Offline-OCR (Tesseract) – Werte bitte prüfen";
+      }
+      if(!result.length){
+        status("Keine Card-Werte erkannt. Foto näher/gerader aufnehmen oder Werte manuell eintragen.", "err");
+      }else{
+        rows = result; save(); render();
+        status(result.length + " Zeilen erkannt. Werte kurz mit dem Bildschirm vergleichen – Felder sind editierbar.", "ok");
+      }
+      $("engine").textContent = used ? "Erkennung: " + used : "";
+    }catch(e){
+      status("Fehler: " + (e && e.message || e), "err");
+    }finally{
+      $("again").disabled = false;
+    }
+  }
+
+  async function onFile(ev){
+    const f = ev.target.files && ev.target.files[0];
+    ev.target.value = "";
+    if(!f) return;
+    try{
+      lastImage = await prepImage(f, 2000);
+      $("preview").src = lastImage.dataUrl; $("preview").hidden = false;
+      runRecognition();
+    }catch(e){ status(e.message, "err"); }
+  }
+  $("cam").onchange = onFile;
+  $("gal").onchange = onFile;
+  $("again").onclick = runRecognition;
+  $("add").onclick = () => { rows.push({nr:"",name:"",card0:"",card1:""}); save(); render(); };
+  $("clear").onclick = () => { $("clear").hidden = true; $("clearYes").hidden = false; setTimeout(() => { $("clear").hidden = false; $("clearYes").hidden = true; }, 4000); };
+  $("clearYes").onclick = () => { rows = []; save(); render(); $("clear").hidden = false; $("clearYes").hidden = true; };
+
+  // ---------- init ----------
+  load(); render();
+  $("engine").textContent = "Erkennung: wird geprüft …";
+  (async () => {
+    try{
+      if(window.claude && typeof window.claude.use === "function"){
+        const s = await window.claude.use("sample");
+        if(s){
+          let lim = null;
+          try{ lim = await s.limits(); }catch(e){}
+          if(!lim || lim.images){ sample = s; samplePossible = true; }
+        }
+      }
+    }catch(e){}
+    $("engine").textContent = sample ? "Erkennung: Claude (Bilderkennung), Offline-OCR als Reserve" : "Erkennung: Offline-OCR (Tesseract)";
+  })();
+})();
+</script>
+</body>
+</html>
