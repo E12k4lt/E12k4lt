@@ -52,7 +52,9 @@ window.CARDQR_EMBED = (() => {
 
 html = html.replace('<script src="vendor/qrcode.js"></script>', () => embed + inlineScript("vendor/qrcode.js"))
            .replace('<script src="vendor/tesseract.min.js"></script>', () => inlineScript("vendor/tesseract.min.js"))
-           .replace('<script src="js/cells.js"></script>', () => inlineScript("js/cells.js"));
+           .replace('<script src="js/cells.js"></script>', () => inlineScript("js/cells.js"))
+           .replace('<script src="js/digits.js"></script>', () => inlineScript("js/digits.js"))
+           .replace('<script src="js/templates.js"></script>', () => inlineScript("js/templates.js"));
 if(/<script src=/.test(html)) throw new Error("external script left in test.html");
 fs.writeFileSync(R("test.html"), html);
 console.log("test.html written:", (fs.statSync(R("test.html")).size/1e6).toFixed(1), "MB");

@@ -68,6 +68,10 @@ input.code.unsure{border-color:var(--warn);background:var(--warn-bg)}
 .link{background:none;border:0;color:var(--muted);padding:4px;font-weight:500;font-size:.85rem}
 .prefix{margin-top:12px}
 .prefix label{display:block;font-size:.8rem;color:var(--muted);font-weight:600;margin-bottom:4px}
+.learnbox{margin-top:14px;border-top:1px solid var(--line);padding-top:12px}
+.alts{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+.alt{gap:0;white-space:pre;padding:6px 8px;font:600 .85rem ui-monospace,Menlo,Consolas,monospace;border-color:var(--warn);color:var(--text)}
+.alt b{color:var(--warn)}
 label.chk{display:flex;gap:8px;align-items:flex-start;font-size:.9rem;margin-top:10px;color:var(--muted)}
 
 #overlay{position:fixed;inset:0;background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:10;
@@ -127,6 +131,10 @@ label.chk{display:flex;gap:8px;align-items:flex-start;font-size:.9rem;margin-top
       <button id="clear">Alles löschen</button>
       <button id="clearYes" hidden>Wirklich löschen?</button>
     </div>
+    <div class="learnbox">
+      <button class="primary" id="learn" hidden>✓ Werte stimmen – bestätigen &amp; lernen</button>
+      <p class="hint"><span id="learnInfo"></span> <button class="link" id="unlearn" hidden>Gelerntes zurücksetzen</button></p>
+    </div>
   </section>
 </main>
 
@@ -144,6 +152,8 @@ label.chk{display:flex;gap:8px;align-items:flex-start;font-size:.9rem;margin-top
 <script src="vendor/qrcode.js"></script>
 <script src="vendor/tesseract.min.js"></script>
 <script src="js/cells.js"></script>
+<script src="js/digits.js"></script>
+<script src="js/templates.js"></script>
 <script>
 (() => {
   const $ = id => document.getElementById(id);
@@ -205,9 +215,17 @@ label.chk{display:flex;gap:8px;align-items:flex-start;font-size:.9rem;margin-top
           qrBox.append(img); qrBox.onclick = () => openOverlay(i, ci);
         };
         inp.oninput = () => { r[key] = clean(inp.value); if(r.unsure) r.unsure[ci] = false; unsure(); save(); draw(); };
+        const altBox = document.createElement("div"); altBox.className = "alts";
+        (r.alts && r.alts[ci] || []).forEach(a => {
+          const b = document.createElement("button"); b.className = "btn alt"; b.title = "Diesen Wert übernehmen";
+          const cur = r[key] || "";
+          a.split("").forEach((c,k) => { if(c !== cur[k]){ const e = document.createElement("b"); e.textContent = c; b.append(e); } else b.append(c); });
+          b.onclick = () => { const old = r[key]; r[key] = a; r.alts[ci] = r.alts[ci].filter(x => x !== a).concat(old ? [old] : []); r.unsure[ci] = false; save(); render(); showLearnInfo(); };
+          altBox.append(b);
+        });
         inp.onblur = () => { inp.value = r[key] || ""; };
         draw();
-        col.append(inp, qrBox); cols.append(col);
+        col.append(inp, altBox, qrBox); cols.append(col);
       });
       row.append(cols);
       const tools = document.createElement("div"); tools.className = "rowtools";
@@ -300,6 +318,37 @@ label.chk{display:flex;gap:8px;align-items:flex-start;font-size:.9rem;margin-top
     };
   }
 
+  // ---------- digit templates (built in + learned on this device) ----------
+  const LEARN = "cardqr.learned.v1", MARGIN = 0.05;
+  let learned = {}, templatesCache = null, lastScan = null;
+  try{ learned = JSON.parse(localStorage.getItem(LEARN) || "{}") || {}; }catch(e){ learned = {}; }
+  function currentTemplates(){
+    if(!window.Digits || !window.CARDQR_TEMPLATES) return null;
+    return templatesCache || (templatesCache = Digits.templatesFromSums(window.CARDQR_TEMPLATES, learned));
+  }
+  function learnedCount(){ return Object.values(learned).reduce((n,e) => n + e.n, 0); }
+  function showLearnInfo(){
+    const n = learnedCount();
+    $("learnInfo").textContent = n ? n + " Zeichen auf diesem Gerät gelernt." : "Noch nichts auf diesem Gerät gelernt.";
+    $("unlearn").hidden = !n;
+    $("learn").hidden = !(lastScan && rows.some(r => r.scan === lastScan.id));
+  }
+  $("learn").onclick = () => {
+    if(!lastScan) return;
+    let cells = 0;
+    rows.forEach(r => { if(r.scan !== lastScan.id || !r.boxes) return;
+      [0,1].forEach(ci => { const v = clean(r["card"+ci]), b = r.boxes[ci];
+        if(!b || v.length !== 11) return;
+        Digits.addSamples(learned, Digits.glyphs(lastScan.gray, lastScan.cw, lastScan.ch, b, v)); cells++; }); });
+    for(const ch in learned) learned[ch].s = learned[ch].s.map(x => Math.round(x*1000)/1000);
+    try{ localStorage.setItem(LEARN, JSON.stringify(learned)); }catch(e){}
+    templatesCache = null; lastScan = null;
+    rows.forEach(r => { r.unsure = [false,false]; r.alts = [[],[]]; });
+    render(); showLearnInfo();
+    status(cells + " Werte bestätigt und gelernt. Die nächsten Fotos werden damit besser erkannt.", "ok");
+  };
+  $("unlearn").onclick = () => { learned = {}; templatesCache = null; try{ localStorage.removeItem(LEARN); }catch(e){} showLearnInfo(); };
+
   // ---------- OCR ----------
   let worker = null, workerFormat = null;
   async function getWorker(whitelist){
@@ -356,12 +405,13 @@ label.chk{display:flex;gap:8px;align-items:flex-start;font-size:.9rem;margin-top
       for(let i=0;i<cw*ch;i++) gray[i] = (rgba[i*4]*299 + rgba[i*4+1]*587 + rgba[i*4+2]*114)/1000;
 
       const res = CellFinder.splitTable(gray, cw, ch);
+      const scanId = Date.now(); lastScan = {id: scanId, gray, cw, ch};
       if(!res.rows.length){ status("Keine Werte im Rahmen gefunden. Rahmen enger um die Werte ziehen.", "err"); return; }
       const jobs = res.rows.reduce((n,r) => n + r.cells.filter(Boolean).length, 0) * CellFinder.VARIANTS.length;
       let done = 0;
       const out = [];
       for(let ri=0; ri<res.rows.length; ri++){
-        const r = res.rows[ri], o = {card0:"", card1:"", unsure:[false,false], snips:[null,null]};
+        const r = res.rows[ri], o = {card0:"", card1:"", unsure:[false,false], snips:[null,null], alts:[[],[]], boxes:[null,null], scan:scanId};
         for(let ci=0; ci<2; ci++){
           const b = r.cells[ci]; if(!b) continue;
           const box = {x0:b.x0, x1:b.x1, y0:r.y0, y1:r.y1};
@@ -380,6 +430,20 @@ label.chk{display:flex;gap:8px;align-items:flex-start;font-size:.9rem;margin-top
           const v = prefixes.length ? CellFinder.voteWithPrefixes(reads, prefixes, 11) : CellFinder.vote(reads, {digitsTail: true});
           o["card"+ci] = v.text;
           o.unsure[ci] = !v.text || v.agree < 0.85 || !v.pattern;
+          o.alts[ci] = [];
+          o.boxes[ci] = box;
+          // template matching on the digits after the fixed beginning; Tesseract serves as a cross-check
+          const T = prefixes.length && currentTemplates();
+          const t = T && Digits.readCell(gray, cw, ch, box, T, v.prefix ? [v.prefix] : prefixes, 11);
+          if(t){
+            const weak = t.digits.map((d,k) => ({d, k})).filter(x => x.d.margin < MARGIN);
+            o["card"+ci] = t.text;
+            o.unsure[ci] = weak.length > 0 || (!!v.text && v.text !== t.text);
+            const alts = new Set();
+            weak.forEach(({d,k}) => { const pos = t.prefix.length + k; alts.add(t.text.slice(0,pos) + d.alt + t.text.slice(pos+1)); });
+            if(v.text && v.text !== t.text && v.text.length === 11) alts.add(v.text);
+            o.alts[ci] = [...alts].slice(0,3);
+          }
         }
         out.push(o);
       }
@@ -389,7 +453,7 @@ label.chk{display:flex;gap:8px;align-items:flex-start;font-size:.9rem;margin-top
         o.nr = prev && prev.nr || (out.length === DEFAULT_NAMES.length ? DEFAULT_NAMES[i][0] : String(i+1));
         o.name = prev && prev.name || (out.length === DEFAULT_NAMES.length ? DEFAULT_NAMES[i][1] : "");
       });
-      rows = out; save(); render();
+      rows = out; save(); render(); showLearnInfo();
       const n = out.reduce((k,o) => k + o.unsure.filter(Boolean).length, 0);
       status(out.length + " Zeilen erkannt." + (n ? " " + n + " Wert(e) bitte prüfen (orange markiert)." : " Werte kurz mit dem Foto-Ausschnitt vergleichen."), n ? "err" : "ok");
     }catch(e){
@@ -416,7 +480,7 @@ label.chk{display:flex;gap:8px;align-items:flex-start;font-size:.9rem;margin-top
     $("offline").textContent = "Offline nicht verfügbar";
   }
 
-  load(); render();
+  load(); render(); showLearnInfo();
 })();
 </script>
 </body>

@@ -1,7 +1,7 @@
 // Caches the whole app (incl. OCR engine and language data) so it runs offline.
-const VERSION = "cardqr-v2";
+const VERSION = "cardqr-v3";
 const FILES = [
-  "./", "index.html", "manifest.webmanifest", "js/cells.js",
+  "./", "index.html", "manifest.webmanifest", "js/cells.js", "js/digits.js", "js/templates.js",
   "vendor/qrcode.js", "vendor/tesseract.min.js", "vendor/worker.min.js",
   "vendor/core/tesseract-core-simd-lstm.wasm.js", "vendor/core/tesseract-core-lstm.wasm.js",
   "lang/eng.traineddata.gz", "icons/icon-192.png", "icons/icon-512.png",

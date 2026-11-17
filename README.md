@@ -16,6 +16,18 @@ Die Werte beginnen immer mit einem bekannten Anfang (Standard: `A37D02`, `894309
 nur die 5 Ziffern danach werden tatsächlich gelesen. Die Anfänge sind in der App unter dem Rahmen
 einstellbar (wird auf dem Gerät gespeichert). Leeres Feld = freie Erkennung.
 
+## Ziffernerkennung mit Vorlagen
+Die Ziffern nach dem festen Anfang werden per Bildvergleich mit Vorlagen dieser Bildschirmschrift
+erkannt (`js/digits.js`): Zelle in 11 Zeichenfelder teilen, jedes Feld mit den Vorlagen 0–9
+vergleichen, bei knappen Fällen nur die Bildbereiche auswerten, in denen sich die zwei besten
+Kandidaten unterscheiden. Tesseract läuft als Gegenprüfung mit.
+
+- Unsichere Ziffern werden markiert, die zweitbeste Lesart erscheint als Knopf zum Übernehmen.
+- „Werte stimmen – bestätigen & lernen“ speichert die Zeichen der aktuellen Aufnahme als
+  zusätzliche Vorlagen auf dem Gerät. Mit jedem bestätigten Foto wird die Erkennung besser.
+- Startvorlagen: `js/templates.js`, erzeugt aus `test/beispiel.jpg` mit
+  `npm i --no-save sharp && node tools/build-templates.js`.
+
 ## Keine Online-Daten
 Die App lädt nichts aus dem Internet. Die in tesseract.js eingebauten CDN-Standardadressen
 (jsdelivr) wurden in `vendor/tesseract.min.js` und `vendor/worker.min.js` durch lokale Pfade ersetzt.
@@ -31,6 +43,8 @@ Repository → Settings → Pages → „Deploy from a branch“ → Branch ausw
 
 ## Aufbau
 - `index.html` – App (Kamera, Rahmen, Erkennung, QR-Codes)
+- `js/digits.js` – Ziffernerkennung per Vorlagen, Lernen
+- `js/templates.js` – Startvorlagen
 - `js/cells.js` – Zerlegt den Ausschnitt in Zeilen/Spalten, Vorverarbeitung und Abstimmung mehrerer OCR-Durchläufe
 - `test.html` – Einzeldatei-Version zum Testen (erzeugt von `tools/build-test.js`)
 - `test/beispiel.jpg` – Beispielfoto für den Test
